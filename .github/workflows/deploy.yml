@@ -24,14 +24,35 @@ jobs:
             echo "➡️ Go to blog directory"
             cd /var/www/blog
 
+            echo "➡️ Enable maintenance mode"
+            php artisan down || true
+
             echo "➡️ Pull latest code"
             git fetch origin
             git reset --hard origin/main
 
+            echo "➡️ Install PHP dependencies"
+            composer install --no-dev --optimize-autoloader --no-interaction
+
+            echo "➡️ Run migrations"
+            php artisan migrate --force
+
+            echo "➡️ Clear old caches"
+            php artisan optimize:clear
+
+            echo "➡️ Cache config, routes, views"
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+
             echo "➡️ Fix permissions"
             chown -R www-data:www-data /var/www/blog
+            chmod -R 775 storage bootstrap/cache
 
-            echo "➡️ Reload PHP"
+            echo "➡️ Restart PHP"
             systemctl reload php8.5-fpm || true
+
+            echo "➡️ Disable maintenance mode"
+            php artisan up || true
 
             echo "✅ Deployment completed"
