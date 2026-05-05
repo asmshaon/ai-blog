@@ -1,4 +1,4 @@
 <?php
 
-echo "this is index page 2";
+echo "Welcome to new AI Blog, more to coming soon...";
 
