@@ -1,49 +1,68 @@
-script: |
-  set -e
-  trap 'echo "❌ Deployment failed at line $LINENO"' ERR
+name: Deploy AI Blog to Server
 
-  echo "➡️ Go to blog directory"
-  cd /var/www/blog
+on:
+  push:
+    branches:
+      - main
 
-  echo "➡️ Pull latest code"
-  git fetch origin
-  git reset --hard origin/main
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-  echo "➡️ Ensure Composer exists"
-  if ! command -v composer &> /dev/null
-  then
-    echo "⚠️ Composer not found, using local composer.phar"
-    php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
-    php composer-setup.php --quiet
-    rm composer-setup.php
-    COMPOSER="php composer.phar"
-  else
-    COMPOSER="composer"
-  fi
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+            trap 'echo "❌ Deployment failed at line $LINENO"' ERR
 
-  echo "➡️ Install PHP dependencies"
-  $COMPOSER install --no-dev --optimize-autoloader --no-interaction
+            echo "➡️ Go to blog directory"
+            cd /var/www/blog
 
-  echo "➡️ Enable maintenance mode"
-  php artisan down || true
+            echo "➡️ Pull latest code"
+            git fetch origin
+            git reset --hard origin/main
 
-  echo "➡️ Run migrations"
-  php artisan migrate --force
+            echo "➡️ Ensure Composer exists"
+            if ! command -v composer &> /dev/null
+            then
+              echo "⚠️ Composer not found, using local composer.phar"
+              php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+              php composer-setup.php --quiet
+              rm composer-setup.php
+              COMPOSER="php composer.phar"
+            else
+              COMPOSER="composer"
+            fi
 
-  echo "➡️ Clear & cache"
-  php artisan optimize:clear
-  php artisan config:cache
-  php artisan route:cache
-  php artisan view:cache
+            echo "➡️ Install PHP dependencies"
+            $COMPOSER install --no-dev --optimize-autoloader --no-interaction
 
-  echo "➡️ Fix permissions"
-  chown -R www-data:www-data storage bootstrap/cache
-  chmod -R 775 storage bootstrap/cache
+            echo "➡️ Enable maintenance mode"
+            php artisan down || true
 
-  echo "➡️ Restart PHP"
-  systemctl reload php8.5-fpm || true
+            echo "➡️ Run migrations"
+            php artisan migrate --force
 
-  echo "➡️ Disable maintenance mode"
-  php artisan up || true
+            echo "➡️ Clear & cache"
+            php artisan optimize:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
 
-  echo "✅ Deployment completed"
+            echo "➡️ Fix permissions"
+            chown -R www-data:www-data storage bootstrap/cache
+            chmod -R 775 storage bootstrap/cache
+
+            echo "➡️ Restart PHP"
+            systemctl reload php8.5-fpm || true
+
+            echo "➡️ Disable maintenance mode"
+            php artisan up || true
+
+            echo "✅ Deployment completed"
