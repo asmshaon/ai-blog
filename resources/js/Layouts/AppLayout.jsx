@@ -5,7 +5,7 @@ import { ThemeToggle } from '@/Components/ThemeToggle';
 
 function Logo() {
     return (
-        <a href="https://asmshaon.tech/" target="_blank" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-light flex items-center justify-center flex-shrink-0">
                 <span className="text-white font-bold text-sm">AS</span>
             </div>
@@ -13,7 +13,7 @@ function Logo() {
                 <div className="text-foreground font-semibold text-sm leading-tight">Abu Saleh</div>
                 <div className="text-muted text-xs leading-tight">Senior Software Engineer</div>
             </div>
-        </a>
+        </Link>
     );
 }
 
