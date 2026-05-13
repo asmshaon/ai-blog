@@ -45,6 +45,8 @@ jobs:
             $COMPOSER install --no-dev --optimize-autoloader --no-interaction
 
             echo "➡️ Install Node.js dependencies and build frontend"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             if command -v npm &> /dev/null
             then
               npm install
