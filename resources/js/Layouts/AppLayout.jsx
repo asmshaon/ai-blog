@@ -1,10 +1,11 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useState } from 'react';
+import { MapPin } from 'lucide-react';
 import { ThemeToggle } from '@/Components/ThemeToggle';
 
 function Logo() {
     return (
-        <Link href="/" className="flex items-center gap-2">
+        <a href="https://asmshaon.tech/" target="_blank" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-light flex items-center justify-center flex-shrink-0">
                 <span className="text-white font-bold text-sm">AS</span>
             </div>
@@ -12,18 +13,22 @@ function Logo() {
                 <div className="text-foreground font-semibold text-sm leading-tight">Abu Saleh</div>
                 <div className="text-muted text-xs leading-tight">Senior Software Engineer</div>
             </div>
-        </Link>
+        </a>
     );
 }
 
-function SocialLinks({ className = '' }) {
+function SocialLinks({ className = '', hideOnMobile = true }) {
+    const linkClass = hideOnMobile
+        ? 'hidden sm:flex text-muted hover:text-accent transition-colors p-2 rounded-lg hover:bg-accent/10'
+        : 'flex text-muted hover:text-accent transition-colors p-2 rounded-lg hover:bg-accent/10';
+
     return (
         <div className={`flex items-center gap-1 ${className}`}>
             <a
                 href="https://x.com/asmshaon"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:flex text-muted hover:text-accent transition-colors p-2 rounded-lg hover:bg-accent/10"
+                className={linkClass}
                 aria-label="X (Twitter)"
             >
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -34,7 +39,7 @@ function SocialLinks({ className = '' }) {
                 href="https://github.com/asmshaon"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:flex text-muted hover:text-accent transition-colors p-2 rounded-lg hover:bg-accent/10"
+                className={linkClass}
                 aria-label="GitHub"
             >
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -45,7 +50,7 @@ function SocialLinks({ className = '' }) {
                 href="https://www.linkedin.com/in/asmshaon"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hidden sm:flex text-muted hover:text-accent transition-colors p-2 rounded-lg hover:bg-accent/10"
+                className={linkClass}
                 aria-label="LinkedIn"
             >
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
@@ -69,9 +74,6 @@ export default function AppLayout({ children, title }) {
                         <div className="flex items-center gap-8">
                             <Logo />
                             <div className="hidden lg:flex items-center gap-8">
-                                <Link href="/" className="nav-link">
-                                    Home
-                                </Link>
                                 {auth?.user?.role === 'admin' && (
                                     <Link href="/admin" className="nav-link">
                                         Admin
@@ -178,19 +180,16 @@ export default function AppLayout({ children, title }) {
                 </main>
             </div>
 
-            <footer className="border-t border-border mt-auto bg-background">
+            <footer className="border-t border-border bg-background">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-accent to-accent-light flex items-center justify-center">
-                                <span className="text-white font-bold text-xs">AS</span>
-                            </div>
-                            <span className="text-sm text-muted">Abu Saleh &mdash; Senior Software Engineer</span>
+                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div className="text-muted text-sm">
+                            &copy; {new Date().getFullYear()} <strong>asmshaon</strong>. All rights reserved.
                         </div>
-                        <p className="text-center text-sm text-muted">
-                            &copy; {new Date().getFullYear()} All rights reserved.
-                        </p>
-                        <SocialLinks />
+                        <div className="flex items-center gap-2 text-muted text-sm">
+                            <MapPin className="w-4 h-4" />
+                            Bangladesh, GMT+6
+                        </div>
                     </div>
                 </div>
             </footer>
