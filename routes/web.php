@@ -34,6 +34,6 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', fn () => Inertia::render('Admin/Dashboard'))->name('dashboard');
 
-    Route::resource('posts', AdminBlogPostController::class)->except(['show']);
+    Route::resource('posts', AdminBlogPostController::class)->except(['show'])->scoped(['post' => 'id']);
     Route::resource('categories', AdminCategoryController::class)->except(['show', 'create', 'edit']);
 });
