@@ -1,0 +1,79 @@
+<p>On a food-ordering platform I work on, fans order from their seat at an event and pay in the mobile app. Vendors (mostly food trucks) receive the order, prepare it and print a ticket in the truck. When I joined, part of the price was worked out on the phone and sent to the server along with the order, and the app talked to the payment provider directly.</p>
+
+<p>Nothing had gone wrong yet. That is exactly the kind of problem you want to fix before it does.</p>
+
+<h2>The phone is not on your side</h2>
+
+<p>Anything the app sends can be changed. A modified build, a replayed request or a simple intercepting proxy is enough to turn a $24 order into a $2 one. If the server takes the total, or any part of it, from the request body, then the customer decides what they pay. It doesn't matter how carefully the app computes it.</p>
+
+<blockquote><p>The client can ask for things. Only the server decides what they cost.</p></blockquote>
+
+<p>There was a second, quieter problem. Because the app computed prices, the rules for commission, sales tax and service charge lived in two places: the app and the server's reporting. Every change to a rate meant a coordinated app release, and the two copies would drift.</p>
+
+<h2>Price from the menu, in whole cents</h2>
+
+<p>The fix is simple to describe. The app sends <em>what</em> it wants: item IDs, extras and quantities. The server works out <em>what it costs</em> from the vendor's current menu. Every amount is an integer number of cents, and each fee is rounded on its own, so the lines on the receipt always add up to the total.</p>
+
+<pre><code>// The request carries item IDs and quantities. It never carries prices.
+public function price(Vendor $vendor, array $lines): Quote
+{
+    $subtotal = 0;
+
+    foreach ($lines as $line) {
+        $item = $vendor-&gt;menuItems()-&gt;available()-&gt;findOrFail($line['item_id']);
+        $quantity = max(1, (int) $line['quantity']);
+
+        $subtotal += $item-&gt;price_cents * $quantity;
+
+        foreach ($line['extras'] ?? [] as $extraId) {
+            $extra = $item-&gt;extras()-&gt;available()-&gt;findOrFail($extraId);
+            $subtotal += $extra-&gt;price_cents * $quantity; // extras are per unit of their item
+        }
+    }
+
+    $rates = $this-&gt;rates-&gt;resolveFor($vendor); // event → vendor → platform
+
+    return new Quote(
+        subtotal: $subtotal,
+        tax: (int) round($subtotal * $rates-&gt;salesTax),
+        commission: (int) round($subtotal * $rates-&gt;commission),
+        serviceCharge: (int) round($subtotal * $rates-&gt;serviceCharge),
+    );
+}</code></pre>
+
+<p>A few rules are baked into that function on purpose:</p>
+
+<ul>
+<li><strong>Unavailable items are refused</strong>, with a clear list of which ones, instead of being silently dropped.</li>
+<li><strong>Quantity is at least one.</strong> A zero or negative quantity is not a discount.</li>
+<li><strong>Every fee is taken on the food subtotal only</strong>, never on another fee, so the order of calculation can't change the result.</li>
+<li><strong>An order with no items is refused</strong>, and so is an order for a vendor who isn't set up to receive payouts yet.</li>
+</ul>
+
+<h2>One function, two callers</h2>
+
+<p>The same pricing code runs twice. First, a <code>quote</code> endpoint shows the customer the full breakdown before they pay. It works even for guests, so people can see the price of a cart before signing in. Second, the order service prices the order again when it is created, from the menu, ignoring anything the app sent. If an item became unavailable between the quote and the order, the customer gets a clear error rather than a surprise charge.</p>
+
+<p>Rates are resolved in one place too. The platform takes a commission and charges sales tax and a consumer service charge, and each can be set per event, per vendor or platform-wide. The most specific rate wins. Admins enter percentages, the database stores fractions with four decimal places, and the event screen shows the rate it actually resolves to, or "Inherited" when nothing overrides it. When there is exactly one helper that reads rates, there is exactly one place for a rounding bug to hide.</p>
+
+<h2>Make the payment call safe to retry</h2>
+
+<p>Moving pricing to the server also meant moving the payment call there. The app now asks the API for everything its payment sheet needs, and the API talks to the payment provider. That is the moment networks start misbehaving, so the calls are written to be retried safely:</p>
+
+<pre><code>$customer = $this-&gt;payments-&gt;customers-&gt;create(
+    ['email' =&gt; $user-&gt;email, 'metadata' =&gt; ['user_id' =&gt; $user-&gt;id]],
+    ['idempotency_key' =&gt; "customer-create-{$user-&gt;id}"],
+);</code></pre>
+
+<ul>
+<li><strong>Create the payment customer once and reuse it.</strong> Before replacing a customer that looks missing, confirm it really is gone. We check three times, 200 ms apart, because a single failed lookup is not proof.</li>
+<li><strong>Send an idempotency key</strong> with every create call, so a retry after a timeout can't create a second customer or a second charge.</li>
+<li><strong>Retry network errors, twice.</strong> Then give up with an error that names exactly which call failed. "Payment failed" helps nobody at an event with a queue behind them.</li>
+<li><strong>Refuse to charge when the key isn't configured</strong>, instead of failing halfway through.</li>
+</ul>
+
+<h2>What it cost, and what it bought</h2>
+
+<p>The change touched the Laravel API, the Go order service and the mobile app's payment screen. It needed one release of the app, after which rate changes became configuration instead of app updates. The payment endpoints are documented in the API specification, so the mobile team builds against a contract instead of reading server code.</p>
+
+<p>None of this is clever. It's the boring discipline that keeps money correct when the network, the phone and the user all behave badly at the same time. If you remember one thing, make it this: <strong>never let a number the client sent end up on an invoice.</strong></p>

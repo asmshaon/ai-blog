@@ -1,0 +1,86 @@
+<p>A travel retailer I worked with sells cruises and escorted tours from seven tour operators. Every operator publishes its tours, departures and prices on its own schedule, so the site is fed by dozens of background jobs: nightly imports, webhook processing, cache warming, search index rebuilds and weather updates for ports.</p>
+
+<p>When one of those jobs failed, nobody knew. The first sign was usually a customer or a salesperson noticing that a tour's prices looked old. By then the content could have been stale for days.</p>
+
+<h2>Two ways a queue fails</h2>
+
+<p>Queues fail in two very different ways, and most setups only watch for one of them.</p>
+
+<ul>
+<li><strong>Loud failures.</strong> A job throws an exception, runs out of retries and lands in the failed-jobs table. This is easy to detect because something happened.</li>
+<li><strong>Silent failures.</strong> The worker process died, the supervisor didn't restart it, a deploy left the queue paused, or a job is stuck waiting on a lock. Nothing throws. Nothing is logged. Work simply stops being done.</li>
+</ul>
+
+<p>The second kind is more dangerous precisely because it produces no events. You can't alert on an event that never happens, unless you alert on its absence.</p>
+
+<h2>Loud failures: tell someone immediately</h2>
+
+<p>Laravel fires an event for every failed job. We listen for it and email the team with the job's name, its ID and the stack trace, so the person reading the alert can act without logging in to find out what broke.</p>
+
+<pre><code>use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Event;
+
+Event::listen(function (JobFailed $event) {
+    Notification::route('mail', config('ops.alerts_to'))
+        -&gt;notify(new QueuedJobFailed(
+            job: $event-&gt;job-&gt;resolveName(),
+            id: $event-&gt;job-&gt;uuid(),
+            error: $event-&gt;exception,
+        ));
+});</code></pre>
+
+<p>Two small things made this bearable in practice. First, the failed-jobs table is pruned on a schedule so it doesn't grow forever. Second, work is split across seven named queues, so a heavy nightly import can't block the queue that sends customer notifications.</p>
+
+<h2>Silent failures: alert on silence</h2>
+
+<p>For the silent kind we added a heartbeat. Every successful job records when it finished. A scheduled command checks that timestamp, and if nothing has completed in four hours it raises an alert.</p>
+
+<pre><code>// After every processed job, remember when work last completed.
+Queue::after(fn () =&gt; Cache::forever('queue:last_completed_at', now()));
+
+// Scheduled every 15 minutes.
+Schedule::call(function () {
+    $last = Cache::get('queue:last_completed_at');
+
+    if (! $last || $last-&gt;lt(now()-&gt;subHours(4))) {
+        Notification::route('mail', config('ops.alerts_to'))
+            -&gt;notify(new QueueHasGoneQuiet($last));
+    }
+})-&gt;everyFifteenMinutes()-&gt;name('queue-heartbeat')-&gt;withoutOverlapping();</code></pre>
+
+<p>Four hours sounds long, but it was chosen deliberately. This system always has <em>some</em> job finishing within that window. A shorter window would page people during quiet nights for no reason, and an alert that fires for no reason is an alert people learn to ignore.</p>
+
+<h2>Make the pipeline itself self-healing</h2>
+
+<p>Alerts are the safety net. The better fix is to make sure a failure can't leave the site in a broken state in the first place. Each operator's import runs as one queued job per tour, so one malformed tour can't stop the rest. A counter per operator tracks how many jobs are still running. When the last one finishes, the search index for that operator is rebuilt.</p>
+
+<p>The important detail is that the same rebuild also runs <strong>when the last job fails</strong>. Otherwise one bad tour at the end of an import would leave the search index pointing at data from the previous night.</p>
+
+<pre><code>public function handle(): void
+{
+    try {
+        $this-&gt;importTour();
+    } finally {
+        // Runs on success and on failure.
+        if (Redis::decr("sync:{$this-&gt;operator}:pending") &lt;= 0) {
+            RebuildSearchIndex::dispatch($this-&gt;operator);
+        }
+    }
+}</code></pre>
+
+<h2>What changed</h2>
+
+<p>Nothing about this is sophisticated. It is two alerts, a heartbeat and a <code>finally</code> block. But it moved the team from hearing about stale content from customers to hearing about it from the system, usually before anyone outside noticed.</p>
+
+<p>The general lesson I took from it: <strong>for every background process, ask how you would know if it stopped.</strong> If the honest answer is "someone would complain", you need an alert on silence.</p>
+
+<h2>A checklist for your own queues</h2>
+
+<ul>
+<li><strong>Alert on every final failure</strong>, with enough context (job name, ID, error) to act without digging.</li>
+<li><strong>Alert on silence.</strong> Pick a window in which healthy work always completes, and alert when nothing has.</li>
+<li><strong>Separate queues by urgency</strong>, so slow batch work can't delay customer-facing messages.</li>
+<li><strong>Prune failed jobs</strong> on a schedule, so the table stays useful instead of becoming noise.</li>
+<li><strong>Put cleanup in <code>finally</code></strong> when a follow-up step must run whether the job succeeds or fails.</li>
+<li><strong>Test the alert.</strong> Stop a worker in staging and confirm the heartbeat fires. An alert that has never fired is an assumption, not a safeguard.</li>
+</ul>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\SafeRedirect;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,9 +13,13 @@ use Inertia\Response;
 
 class LoginController extends Controller
 {
-    public function create(): Response
+    public function create(Request $request): Response
     {
-        return Inertia::render('Auth/Login');
+        SafeRedirect::rememberFromRequest($request);
+
+        return Inertia::render('Auth/Login', [
+            'redirect' => SafeRedirect::isSafePath((string) $request->query('redirect', '')) ? $request->query('redirect') : null,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse

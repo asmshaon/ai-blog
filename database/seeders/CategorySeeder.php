@@ -10,14 +10,12 @@ class CategorySeeder extends Seeder
     public function run(): void
     {
         $categories = [
-            ['name' => 'Artificial Intelligence', 'slug' => 'artificial-intelligence', 'description' => 'AI research, techniques, and applications.'],
-            ['name' => 'Large Language Models', 'slug' => 'large-language-models', 'description' => 'LLMs, transformers, and NLP breakthroughs.'],
-            ['name' => 'System Design', 'slug' => 'system-design', 'description' => 'Designing scalable and reliable systems.'],
-            ['name' => 'Software Architecture', 'slug' => 'software-architecture', 'description' => 'Architectural patterns and best practices.'],
-            ['name' => 'Machine Learning', 'slug' => 'machine-learning', 'description' => 'ML algorithms, training, and deployment.'],
-            ['name' => 'MLOps', 'slug' => 'mlops', 'description' => 'Operationalizing machine learning at scale.'],
-            ['name' => 'Deep Learning', 'slug' => 'deep-learning', 'description' => 'Neural networks and deep learning advances.'],
-            ['name' => 'Cloud Computing', 'slug' => 'cloud-computing', 'description' => 'Cloud-native architectures and services.'],
+            ['name' => 'Backend', 'slug' => 'backend', 'description' => 'APIs, data models and the business rules behind them.'],
+            ['name' => 'Payments', 'slug' => 'payments', 'description' => 'Pricing, money movement and payment providers.'],
+            ['name' => 'System Design', 'slug' => 'system-design', 'description' => 'Integrations, data pipelines and designing for failure.'],
+            ['name' => 'Laravel', 'slug' => 'laravel', 'description' => 'Practical Laravel from production systems.'],
+            ['name' => 'Security', 'slug' => 'security', 'description' => 'Security reviews, fixes and hardening.'],
+            ['name' => 'DevOps', 'slug' => 'devops', 'description' => 'Deploys, queues, monitoring and keeping systems running.'],
         ];
 
         foreach ($categories as $category) {

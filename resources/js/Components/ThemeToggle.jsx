@@ -7,10 +7,11 @@ export function ThemeToggle() {
     if (!mounted) {
         return (
             <button
-                className="text-muted hover:text-foreground transition-colors p-2 rounded-lg hover:bg-accent/10"
+                type="button"
+                className="w-9 h-9 rounded-full border border-slate-300 dark:border-dark-500 bg-card-bg flex items-center justify-center text-foreground hover:border-accent transition-colors"
                 aria-label="Toggle theme"
             >
-                <div className="w-5 h-5" />
+                <div className="w-4 h-4" />
             </button>
         );
     }
@@ -18,14 +19,14 @@ export function ThemeToggle() {
     return (
         <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="text-muted hover:text-foreground transition-colors p-2 rounded-lg hover:bg-accent/10"
+            className="w-9 h-9 rounded-full border border-slate-300 dark:border-dark-500 bg-card-bg flex items-center justify-center text-foreground hover:border-accent transition-colors"
             aria-label="Toggle theme"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
         >
             {theme === 'dark' ? (
-                <Sun className="w-5 h-5" />
+                <Sun className="w-4 h-4" />
             ) : (
-                <Moon className="w-5 h-5" />
+                <Moon className="w-4 h-4" />
             )}
         </button>
     );

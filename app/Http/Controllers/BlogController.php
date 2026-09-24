@@ -12,7 +12,7 @@ class BlogController extends Controller
 {
     public function index(Request $request): Response
     {
-        $query = BlogPost::with(['user', 'category', 'tags'])
+        $query = BlogPost::with('category:id,name,slug')
             ->published()
             ->latest('published_at');
 
@@ -33,12 +33,28 @@ class BlogController extends Controller
             });
         }
 
-        $posts = $query->paginate(9)->withQueryString();
+        // The listing only needs what each entry shows, never the full content.
+        $posts = $query->paginate(10)->withQueryString()->through(fn (BlogPost $post) => [
+            'id' => $post->id,
+            'slug' => $post->slug,
+            'title' => $post->title,
+            'excerpt' => $post->excerpt,
+            'published_at' => $post->published_at,
+            'word_count' => $post->word_count,
+            'category' => $post->category?->only(['name', 'slug']),
+        ]);
+
+        $filtered = $request->filled('search') || $request->filled('category') || $request->filled('tag');
 
         return Inertia::render('Blog/Index', [
             'posts' => $posts,
             'filters' => $request->only(['search', 'category', 'tag']),
-            'categories' => Category::select('id', 'name', 'slug')->get(),
+            'showLatestBadge' => ! $filtered && $posts->currentPage() === 1,
+            'categories' => Category::select('id', 'name', 'slug')
+                ->withCount(['blogPosts as posts_count' => fn ($q) => $q->published()])
+                ->whereHas('blogPosts', fn ($q) => $q->published())
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 

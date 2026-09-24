@@ -16,13 +16,13 @@ export default function PostsIndex({ posts, filters }) {
             <div className="mb-6 flex justify-between items-center">
                 <Link
                     href="/admin/posts/create"
-                    className="btn-primary text-white px-6 py-2 rounded-lg text-sm font-semibold"
+                    className="btn-primary px-6 py-2 rounded-lg text-sm font-semibold"
                 >
                     New Post
                 </Link>
             </div>
 
-            <div className="bg-card-bg rounded-2xl border border-border overflow-hidden">
+            <div className="bg-card-bg rounded-2xl border border-border overflow-x-auto">
                 <table className="min-w-full divide-y divide-border">
                     <thead className="bg-background">
                         <tr>
@@ -43,9 +43,9 @@ export default function PostsIndex({ posts, filters }) {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${
-                                        post.status === 'published' ? 'bg-green-500/10 text-green-500 border border-green-500/30' :
+                                        post.status === 'published' ? 'bg-accent text-accent-contrast border border-accent' :
                                         post.status === 'draft' ? 'bg-muted/10 text-muted border border-border' :
-                                        'bg-orange-500/10 text-orange-500 border border-orange-500/30'
+                                        'bg-transparent text-muted border border-dashed border-slate-400'
                                     }`}>
                                         {post.status}
                                     </span>
@@ -68,7 +68,7 @@ export default function PostsIndex({ posts, filters }) {
                                     </Link>
                                     <button
                                         onClick={() => handleDelete(post.id)}
-                                        className="text-red-500 hover:text-red-400 transition-colors"
+                                        className="text-foreground underline underline-offset-4 decoration-dashed hover:decoration-solid transition-colors"
                                     >
                                         Delete
                                     </button>
@@ -88,7 +88,7 @@ export default function PostsIndex({ posts, filters }) {
                             preserveScroll
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 link.active
-                                    ? 'btn-primary text-white'
+                                    ? 'btn-primary'
                                     : 'bg-card-bg text-muted border border-border hover:border-accent hover:text-foreground'
                             } ${!link.url ? 'opacity-50 cursor-not-allowed' : ''}`}
                             dangerouslySetInnerHTML={{ __html: link.label }}

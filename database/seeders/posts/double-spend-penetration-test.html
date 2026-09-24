@@ -1,0 +1,89 @@
+<p>I spent a year on an e-wallet for consumers and merchants in Singapore. Customers could send money to each other, pay merchants by scanning a QR code, top up from cards and banks, and withdraw to local bank accounts, across several currencies. Sellers on the company's marketplace were paid through the same wallet.</p>
+
+<p>A penetration test found something every payments engineer dreads: sending two requests at the same moment could apply a balance change twice.</p>
+
+<h2>How the race worked</h2>
+
+<p>The transfer logic did what most first versions do:</p>
+
+<ol>
+<li>Read the sender's balance.</li>
+<li>Check it covers the amount plus fees.</li>
+<li>Debit the sender and credit the receiver.</li>
+</ol>
+
+<p>Each step was correct on its own. The problem is the gap between step 1 and step 3. Two requests arriving within a few milliseconds both read the same balance, both pass the check, and both debit. A customer with $100 could send $100 twice.</p>
+
+<pre><code>// Before: check-then-act with a window in between.
+$wallet = Wallet::find($senderId);
+
+if ($wallet-&gt;balance &lt; $amount + $fee) {
+    throw new InsufficientBalance();
+}
+
+// ← a second request can pass the same check here
+
+$wallet-&gt;decrement('balance', $amount + $fee);
+$receiver-&gt;increment('balance', $amount);</code></pre>
+
+<p>This is a classic time-of-check to time-of-use (TOCTOU) bug. Load testing rarely finds it, because it needs two requests from the same account at the same instant, which is exactly what an attacker, or a double-tapped button on a slow network, produces.</p>
+
+<h2>Make the transfer all-or-nothing</h2>
+
+<p>The fix has two parts. Validate everything that can be validated <em>before</em> touching money, then do the money movement inside one database transaction that locks the rows it depends on.</p>
+
+<pre><code>// 1. Reject early: receiver, PIN, amount, fees, commission and rewards.
+$this-&gt;validateTransfer($request);
+$charges = $this-&gt;calculateCharges($request); // fees, commission, rewards
+
+// 2. Move money atomically.
+DB::transaction(function () use ($request, $charges) {
+    $sender = Wallet::whereKey($request-&gt;senderWalletId)-&gt;lockForUpdate()-&gt;first();
+    $receiver = Wallet::whereKey($request-&gt;receiverWalletId)-&gt;lockForUpdate()-&gt;first();
+
+    if ($sender-&gt;balance &lt; $charges-&gt;totalDebit) {
+        throw new InsufficientBalance(); // rolls back everything
+    }
+
+    $sender-&gt;decrement('balance', $charges-&gt;totalDebit);
+    $receiver-&gt;increment('balance', $charges-&gt;receiverCredit);
+
+    Transaction::record($sender, $receiver, $charges);
+});</code></pre>
+
+<p>With <code>lockForUpdate()</code>, the second request waits until the first commits, then reads the <em>new</em> balance and fails the check. Every failure path, from a bad PIN to insufficient funds, rolls back the whole transaction, so a transfer either completes fully or leaves no trace.</p>
+
+<p>One practical detail: lock rows in a consistent order (for example by wallet ID), or two transfers going in opposite directions can deadlock each other.</p>
+
+<h2>Callbacks are the same bug in disguise</h2>
+
+<p>Top-ups had the same shape. Payment gateways notify you by callback, and they retry callbacks they think you missed. If the handler credits the wallet every time it's called, a retried callback becomes free money. The fix is the same idea: verify the callback, then record it against the gateway's reference inside the transaction, and treat a reference you've already seen as done.</p>
+
+<h2>While we were in there</h2>
+
+<p>A finding like this is a good reason to review the neighbours. We also fixed:</p>
+
+<ul>
+<li>a <strong>privilege escalation</strong> where a sub-admin could reach modules outside their permissions;</li>
+<li>an <strong>access-control flaw</strong> where withdrawal details could be read by changing an ID in the URL;</li>
+<li><strong>cross-site scripting</strong> on some admin view pages.</li>
+</ul>
+
+<p>And we added PIN checks on every transfer, signed API orders for merchants, masking of sensitive data in responses, and encryption for the biometric-payment API.</p>
+
+<h2>What I took away</h2>
+
+<p>Every "check, then act" on shared state is a race until proven otherwise. In money code, the proof is a transaction plus a row lock, and a test that fires two requests at once. A penetration test is cheap compared with finding this bug in production.</p>
+
+<h2>A checklist for money-moving code</h2>
+
+<ul>
+<li><strong>Validate first.</strong> Receiver, PIN, amount, fees, commission and rewards are all checked before any balance changes.</li>
+<li><strong>Calculate every charge before moving money</strong>, so there is never a half-applied fee to reverse.</li>
+<li><strong>One transaction per transfer</strong>, with the balance check inside it, after the rows are locked.</li>
+<li><strong>Lock in a consistent order</strong> to avoid deadlocks between opposite transfers.</li>
+<li><strong>Treat gateway callbacks as retries by default.</strong> Record the gateway's reference and ignore one you've already processed.</li>
+<li><strong>Write the concurrent test.</strong> Fire two identical requests at once and assert the balance moved exactly once.</li>
+</ul>
+
+<p>Separately, reporting and dashboards were competing with transactions on one database. Moving reads to read-only connections kept heavy reports from slowing down the payments that customers were waiting on.</p>

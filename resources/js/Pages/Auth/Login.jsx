@@ -1,12 +1,14 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm } from '@inertiajs/react';
+import AuthField from '@/Components/AuthField';
+import { Head, Link, useForm } from '@inertiajs/react';
 
-export default function Login() {
+export default function Login({ redirect }) {
     const { data, setData, post, processing, errors } = useForm({
         email: '',
         password: '',
         remember: false,
     });
+    const query = redirect ? `?redirect=${encodeURIComponent(redirect)}` : '';
 
     const submit = (e) => {
         e.preventDefault();
@@ -14,59 +16,67 @@ export default function Login() {
     };
 
     return (
-        <AppLayout title="Login">
-            <Head title="Login" />
-            <div className="max-w-md mx-auto">
-                <form onSubmit={submit} className="space-y-6 bg-card-bg p-8 rounded-2xl border border-border">
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-foreground">
-                            Email
-                        </label>
-                        <input
-                            id="email"
-                            type="email"
-                            value={data.email}
-                            onChange={(e) => setData('email', e.target.value)}
-                            className="mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors"
-                        />
-                        {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
-                    </div>
+        <AppLayout>
+            <Head title="Sign in" />
+            <div className="max-w-md mx-auto py-10 sm:py-16">
+                <Link
+                    href={redirect ? `${redirect}#comments` : '/'}
+                    className="inline-block mb-7 font-mono text-xs uppercase tracking-wider text-muted hover:text-foreground"
+                >
+                    ← {redirect ? 'Back to the post' : 'Back to writing'}
+                </Link>
+                <h1 className="font-display font-medium text-foreground text-[2.5rem] leading-tight">Sign in</h1>
+                <p className="mt-2 mb-8 text-muted">
+                    You only need an account to comment.
+                    {redirect && " After signing in you'll return to the discussion."}
+                </p>
 
-                    <div>
-                        <label htmlFor="password" className="block text-sm font-medium text-foreground">
-                            Password
-                        </label>
-                        <input
-                            id="password"
-                            type="password"
-                            value={data.password}
-                            onChange={(e) => setData('password', e.target.value)}
-                            className="mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors"
-                        />
-                        {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-                    </div>
+                <form onSubmit={submit} className="space-y-5">
+                    <AuthField
+                        id="email"
+                        label="Email"
+                        type="email"
+                        autoComplete="email"
+                        value={data.email}
+                        onChange={(v) => setData('email', v)}
+                        error={errors.email}
+                    />
+                    <AuthField
+                        id="password"
+                        label="Password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={data.password}
+                        onChange={(v) => setData('password', v)}
+                        error={errors.password}
+                    />
 
-                    <div className="flex items-center">
+                    <label htmlFor="remember" className="flex items-center gap-2 text-sm text-muted">
                         <input
                             id="remember"
                             type="checkbox"
                             checked={data.remember}
                             onChange={(e) => setData('remember', e.target.checked)}
-                            className="h-4 w-4 text-accent focus:ring-accent/20 border-border rounded bg-background"
+                            className="h-4 w-4 rounded border-slate-300 accent-current text-foreground"
                         />
-                        <label htmlFor="remember" className="ml-2 block text-sm text-muted">
-                            Remember me
-                        </label>
-                    </div>
+                        Remember me
+                    </label>
 
                     <button
                         type="submit"
                         disabled={processing}
-                        className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white btn-primary focus:outline-none disabled:opacity-50"
+                        className="btn-primary w-full py-2.5 rounded-md text-sm font-semibold disabled:opacity-50"
                     >
-                        Log in
+                        Sign in
                     </button>
                 </form>
+
+                <p className="mt-6 text-sm text-muted">
+                    New here?{' '}
+                    <Link href={`/register${query}`} className="text-foreground underline underline-offset-4">
+                        Create an account
+                    </Link>
+                </p>
             </div>
         </AppLayout>
     );
