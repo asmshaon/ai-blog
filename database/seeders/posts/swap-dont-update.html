@@ -1,0 +1,75 @@
+<p>A cruise and escorted-tour retailer I worked with sells trips from seven tour operators. Each operator publishes tours, departures, prices and day-by-day itineraries in its own format and on its own schedule, and the content changes daily. The site needs one consistent tour page and one search index, no matter where a tour came from.</p>
+
+<p>The original import updated rows in place. That works right up until an import fails halfway, and then customers see a tour with new departures and old prices, or search results that link to tours which no longer exist.</p>
+
+<h2>The problem with updating in place</h2>
+
+<p>An in-place import has an awkward property: while it runs, the live tables are a mix of yesterday and today. If it finishes, the mix lasts a few minutes. If it crashes, the mix lasts until someone notices. And every page view during that window reads half-written data.</p>
+
+<p>What we wanted was simple to state: <strong>customers should only ever see a complete old version or a complete new version, never something in between.</strong></p>
+
+<h2>Load to the side, then swap</h2>
+
+<p>Each operator's sync now works in three steps:</p>
+
+<ol>
+<li><strong>Back up</strong> the operator's current tables.</li>
+<li><strong>Load</strong> the new catalogue into temporary tables that no page reads from.</li>
+<li><strong>Swap</strong> them into place in one step, once everything has loaded.</li>
+</ol>
+
+<pre><code>DB::statement('CREATE TABLE tours_next LIKE tours');
+// ... queued jobs fill tours_next, one job per tour ...
+
+// All jobs done: swap atomically.
+DB::statement('
+    RENAME TABLE tours      TO tours_previous,
+                 tours_next TO tours
+');
+DB::statement('DROP TABLE tours_previous');</code></pre>
+
+<p>In MySQL, a multi-table <code>RENAME TABLE</code> is atomic: readers see either the old table or the new one. If an import fails, the temporary tables are simply thrown away, and the site keeps serving yesterday's complete data.</p>
+
+<h2>One reader per operator</h2>
+
+<p>Swapping safely only helps if the data going in is consistent. Every operator's format is different, so each one gets its own parser behind a shared contract. The rest of the system only ever sees one tour shape: itinerary by day, meals, accommodation, highlights, optional extras, weather, departures and prices.</p>
+
+<pre><code>interface TourParser
+{
+    public function supports(Vendor $vendor): bool;
+
+    public function parse(RawTour $raw): TourDetails;
+}</code></pre>
+
+<p>Adding an operator now means writing one parser. The same parsers also build the data for quote-request emails, so an email to the sales team always matches the page the customer was looking at.</p>
+
+<p>A few rules live in the parsers because they're business rules, not formatting:</p>
+
+<ul>
+<li>Departures are sorted by price, and the first one that isn't sold out becomes the default.</li>
+<li>Meals are parsed into separate breakfast, lunch and dinner flags, and accommodation is attached to the matching itinerary day.</li>
+<li>A tour that isn't found raises a clear error instead of rendering an empty page.</li>
+</ul>
+
+<h2>The search index gets the same treatment</h2>
+
+<p>Tour search reads from a single flattened table. Rebuilding it in place had the same problem as the import, only more visible: customers searching during a rebuild saw empty or partial results.</p>
+
+<p>The fix is the same pattern. Build the new index in a copy of the table, keep the rows for the operators that aren't being rebuilt, rename the copy into place, then clear the related page caches. The rebuild can target one operator, one brand or everything.</p>
+
+<h2>Webhooks, too</h2>
+
+<p>One operator pushes changes as webhooks rather than offering a file to pull. Processing them inline was slow and fragile. Now the endpoint answers immediately, stores only the event types that matter, and a dedicated queue processes stored events in batches every four hours. Processed events are deleted after a day. The webhook sender gets a fast response, and our import keeps its "load, then swap" guarantees.</p>
+
+<h2>The takeaway</h2>
+
+<p>Whenever a job rewrites data that customers are reading, ask what they see if the job dies halfway. If the answer is "a mix", load to the side and swap. It costs some disk space and a little extra code, and it turns a whole class of partial-failure bugs into non-events.</p>
+
+<h2>Checklist</h2>
+
+<ul>
+<li>Can the import fail at any point without customers seeing a mix of old and new data?</li>
+<li>Is the previous version backed up before it is replaced?</li>
+<li>Does one bad record stop the whole import, or just itself?</li>
+<li>Do the search index and caches refresh after the swap, including when the last job failed?</li>
+</ul>

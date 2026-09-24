@@ -1,0 +1,77 @@
+<p>The car-rental platform I worked on for five years originally ran its bookings on a .NET engine built by another team. The team decided to rebuild the booking engine in PHP on Laravel. That was the easy decision. The hard part was doing it without stopping a business that took bookings every minute of every day.</p>
+
+<p>This post is about how we avoided a big-bang cutover, and what made that possible.</p>
+
+<h2>Why not switch over in one go?</h2>
+
+<p>A single switch-over date is tempting. You build the new engine, test it, pick a quiet night and flip. It fails in predictable ways:</p>
+
+<ul>
+<li><strong>Old bookings.</strong> Customers who booked on the old engine still need to change, cancel and get refunds after the switch.</li>
+<li><strong>Unfinished features.</strong> The new engine rarely covers every endpoint on day one.</li>
+<li><strong>No way back.</strong> If something breaks at scale, rolling back means losing whatever the new engine did in the meantime.</li>
+</ul>
+
+<p>So instead of one switch, we moved one piece at a time and kept the old path working until nothing needed it.</p>
+
+<h2>Step 1: bring the history across</h2>
+
+<p>The new engine had to be able to manage bookings it didn't create. Historical bookings from the .NET system were imported into the new booking model, with the commission rules that applied when they were made. Commission is how the business earns money on each rental, so getting it wrong on old bookings would have quietly changed revenue reports.</p>
+
+<pre><code>foreach ($legacy-&gt;bookingsSince($from)-&gt;lazy() as $old) {
+    Booking::updateOrCreate(
+        ['legacy_reference' =&gt; $old-&gt;reference],   // safe to re-run
+        [
+            'supplier_id'     =&gt; $this-&gt;suppliers-&gt;map($old-&gt;supplierCode),
+            'status'          =&gt; $this-&gt;statuses-&gt;map($old-&gt;status),
+            'commission_rule' =&gt; $this-&gt;commission-&gt;ruleAt($old-&gt;supplierCode, $old-&gt;createdAt),
+            'total_cents'     =&gt; $old-&gt;totalCents,
+        ],
+    );
+}</code></pre>
+
+<p>Keying the import on the legacy reference made it idempotent. We could run it, check the results, fix a mapping and run it again as often as needed before relying on it.</p>
+
+<h2>Step 2: bridge what isn't ready yet</h2>
+
+<p>Some endpoints were ready before others. For the ones that weren't (cancel, single-vehicle search and the terms and conditions, in version 2.0 of the API), the new API routed calls through a bridge to the old engine. Clients talked to one API throughout. Behind it, each endpoint moved over when its native version was ready, and the bridge for it was removed.</p>
+
+<pre><code>Route::prefix('v2')-&gt;group(function () {
+    Route::post('bookings', [BookingController::class, 'store']);          // native
+    Route::get('vehicles/{id}/terms', LegacyEngineBridge::terms(...));     // bridged for now
+    Route::post('bookings/{booking}/cancel', LegacyEngineBridge::cancel(...));
+});</code></pre>
+
+<p>This is the "strangler" approach: the new system grows around the old one, taking over one route at a time, until the old one has nothing left to do.</p>
+
+<h2>Step 3: build the engine to survive partial failure</h2>
+
+<p>A booking touches the supplier, the payment gateway, the database, emails and SMS, and any of them can fail halfway. Supplier prices can also change between search and booking. The new engine creates a booking in stages:</p>
+
+<ol>
+<li>Save an <strong>incomplete</strong> record first, so nothing is ever lost.</li>
+<li>Make the <strong>supplier</strong> booking.</li>
+<li>Take the <strong>payment</strong>.</li>
+<li>Mark it <strong>confirmed</strong> and send the notifications.</li>
+</ol>
+
+<p>If a step fails, the record says exactly how far it got, and staff get an alert for incomplete bookings instead of discovering them later. If the supplier's price rises between search and booking, the customer is protected from the increase. The engine also supports modifications, cancellations with refund rules, rebook-and-cancel for members, and pending payments.</p>
+
+<h2>Step 4: switch the old engine off</h2>
+
+<p>Once every endpoint was native and every historical booking could be managed in the new system, the bridge had nothing left to route, and the .NET engine was retired. The switch-off was the last step, not the riskiest one.</p>
+
+<h2>What made it work</h2>
+
+<ul>
+<li><strong>An idempotent import</strong>, so history could be brought across and checked repeatedly.</li>
+<li><strong>One API in front of both engines</strong>, so clients never had to know which one answered.</li>
+<li><strong>Staged bookings and alerts</strong>, so partial failures were visible instead of silent.</li>
+<li><strong>Patience.</strong> Retiring the old engine last, not first.</li>
+</ul>
+
+<p>Big-bang rewrites fail because they bet everything on one night. Moving one piece at a time is slower on paper and much faster in practice, because you never have to stop and recover.</p>
+
+<h2>If you're planning a similar migration</h2>
+
+<p>Start by listing every endpoint the old system serves and every kind of record it owns. For each one, decide how it will be handled during the transition: imported, bridged, or rebuilt natively. That list becomes your migration plan and your progress report at the same time. Anything still marked "bridged" is a reason the old system can't be switched off yet.</p>

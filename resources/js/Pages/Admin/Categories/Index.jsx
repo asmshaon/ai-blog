@@ -54,18 +54,18 @@ export default function CategoriesIndex({ categories }) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <input type="text" placeholder="Name" value={createData.name} onChange={(e) => setCreateData('name', e.target.value)} className={inputClass} />
-                        {createErrors.name && <p className="mt-1 text-sm text-red-500">{createErrors.name}</p>}
+                        {createErrors.name && <p className="mt-1 text-sm text-foreground font-medium">{createErrors.name}</p>}
                     </div>
                     <div>
                         <input type="text" placeholder="Description" value={createData.description} onChange={(e) => setCreateData('description', e.target.value)} className={inputClass} />
                     </div>
-                    <button type="submit" disabled={createProcessing} className="btn-primary text-white px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">
+                    <button type="submit" disabled={createProcessing} className="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">
                         Create
                     </button>
                 </div>
             </form>
 
-            <div className="bg-card-bg rounded-2xl border border-border overflow-hidden">
+            <div className="bg-card-bg rounded-2xl border border-border overflow-x-auto">
                 <table className="min-w-full divide-y divide-border">
                     <thead className="bg-background">
                         <tr>
@@ -105,7 +105,7 @@ export default function CategoriesIndex({ categories }) {
                                             <button onClick={() => startEdit(category)} className="text-muted hover:text-accent transition-colors">
                                                 Edit
                                             </button>
-                                            <button onClick={() => handleDelete(category.id)} className="text-red-500 hover:text-red-400 transition-colors">
+                                            <button onClick={() => handleDelete(category.id)} className="text-foreground underline underline-offset-4 decoration-dashed hover:decoration-solid transition-colors">
                                                 Delete
                                             </button>
                                         </td>

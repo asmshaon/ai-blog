@@ -1,0 +1,75 @@
+<p>For almost two years I led a small team building a point-of-sale, delivery and inventory platform for licensed, regulated retailers in the US. It was multi-tenant: each retailer had its own stores, staff, settings and customers. It covered the till, delivery drivers, in-store pickup, online orders, purchasing from brands, and inventory.</p>
+
+<p>One requirement shaped more of the design than any other. In this industry, every regulated sale must be reported to the state's track-and-trace system. Not most sales. Not eventually. Each one, once, and only for the items the state actually tracks.</p>
+
+<h2>What "exactly once" really means</h2>
+
+<p>"Report each sale" sounds like one API call. In practice it hides several rules:</p>
+
+<ul>
+<li><strong>Once.</strong> Reporting a sale twice overstates what left the shelf. Missing one understates it. Both show up as discrepancies an auditor will ask about.</li>
+<li><strong>Only tracked items.</strong> A store sells tracked packages and ordinary goods in the same basket. Only the tracked ones are reported.</li>
+<li><strong>Only when allowed.</strong> Sales outside the retailer's business hours, or during hours the state restricts, must not happen at all for tracked items.</li>
+<li><strong>From every channel.</strong> A sale can come from the till, a driver's delivery, a pickup order or the online store.</li>
+</ul>
+
+<h2>Report when the order completes, from one place</h2>
+
+<p>Because orders came from four channels, the first decision was to have exactly one order engine and exactly one place where "this order is complete" happens. Reporting hangs off that moment, not off any particular screen.</p>
+
+<pre><code>final class CompleteOrder
+{
+    public function __invoke(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $order-&gt;markCompleted();
+
+            $tracked = $order-&gt;lines-&gt;filter(fn ($line) =&gt; $line-&gt;product-&gt;isTracked());
+
+            if ($tracked-&gt;isNotEmpty()) {
+                ComplianceReport::firstOrCreate(
+                    ['order_id' =&gt; $order-&gt;id],          // one report per order
+                    ['status' =&gt; ComplianceReport::PENDING],
+                );
+            }
+        });
+
+        ReportSaleToState::dispatch($order-&gt;id)-&gt;afterCommit();
+    }
+}</code></pre>
+
+<p>Three details make the "once" hold:</p>
+
+<ul>
+<li>The report row is created <strong>inside the same transaction</strong> as the order completion, with a unique key on the order. Completing an order twice can't create two reports.</li>
+<li>The job is dispatched <strong>after commit</strong>, so a rolled-back order is never reported.</li>
+<li>The job checks the report's status before calling the state and records the state's reference afterwards. A retried job sees "already reported" and stops.</li>
+</ul>
+
+<h2>Block what isn't allowed, before it's sold</h2>
+
+<p>It's much easier to prevent a sale than to explain one. The order engine refuses tracked items outside the retailer's business hours and during restricted hours, and lets untracked goods through. The cashier sees a clear message at the till instead of finding out from a compliance report a week later.</p>
+
+<pre><code>if ($line-&gt;product-&gt;isTracked() &amp;&amp; ! $store-&gt;canSellTrackedItemsAt(now($store-&gt;timezone))) {
+    throw OrderRejected::outsideSellingHours($line-&gt;product);
+}</code></pre>
+
+<p>Note the store's timezone. A platform serving retailers in several states has to be careful that "10 PM" means 10 PM where the store is, not where the server is.</p>
+
+<h2>Keep inventory honest in both directions</h2>
+
+<p>Reporting sales is half the picture. Stock also arrives: stores order from brands, shipments arrive in bags on scheduled dates, and they're received against the purchase order. The platform syncs packages from the state system, reconciles quantities, records variances, and links each package to the product profile the store sells. When the numbers disagree, the system shows it, instead of silently trusting one side.</p>
+
+<h2>The rest of the platform</h2>
+
+<p>The same order engine handled discounts per item and per order, promo codes, tax-inclusive pricing and delivery fees. It also handled the driver flow: take the order, pick up, get paid, deliver with a signature. Regulation required ID checks, so the in-store queue and customer records support scanning IDs and driver licences.</p>
+
+<p>Later the business spun off a wholesale product from the same code: a point of sale and admin for distributors, with its own subdomain per distributor and state-compliant transfers. I also built the company's public product website and self-service onboarding, which had to follow each state's rules, including states without the track-and-trace system.</p>
+
+<h2>What I'd repeat</h2>
+
+<p>When a rule says "exactly once", put a unique constraint where the rule lives, dispatch side effects after commit, and make the side effect check whether it already happened. And wherever you can, stop the invalid action at the point of sale rather than reporting on it afterwards.</p>
+
+<h2>Testing it</h2>
+
+<p>The tests that mattered most were the unpleasant ones: complete the same order twice, retry the reporting job after a timeout, roll back an order after the job was queued, and sell a tracked item one minute after closing time in a store two timezones away. Each of those should produce exactly one report or a clear refusal, never a duplicate and never silence.</p>

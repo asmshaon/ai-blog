@@ -1,0 +1,86 @@
+<p>Every public login form is eventually found by a script that tries passwords. On two recent projects, a vendor console for an event food-ordering platform and the public site of a travel retailer, I added protection against password guessing. The two needed different tools, and the details mattered more than the headline feature.</p>
+
+<h2>What "rate limiting" usually gets wrong</h2>
+
+<p>The simplest approach is a throttle on the login route: at most N requests per minute per IP. It helps a little, but it has two problems:</p>
+
+<ul>
+<li>It limits <strong>requests</strong>, not <strong>failed attempts</strong>. A real user who mistypes twice and a script that tries a thousand passwords look the same until the limit is hit.</li>
+<li>The window is <strong>fixed</strong>. A script that waits for the minute to roll over gets a fresh allowance every time.</li>
+</ul>
+
+<p>What we wanted instead was a lockout on failures, keyed by account and address, with a window that restarts if you keep trying.</p>
+
+<h2>A sliding lockout on failed attempts</h2>
+
+<p>On the vendor console, sign-in is locked for five minutes after the fifth failed attempt. The part people often miss is that trying again <em>while locked</em> restarts the five minutes. A script that keeps hammering never gets back in. A person who waits a few minutes does.</p>
+
+<pre><code>use Illuminate\Support\Facades\RateLimiter;
+
+public function store(LoginRequest $request): RedirectResponse
+{
+    $key = 'login:'.Str::lower($request-&gt;input('email')).'|'.$request-&gt;ip();
+
+    if (RateLimiter::tooManyAttempts($key, maxAttempts: 5)) {
+        // Trying while locked restarts the window.
+        RateLimiter::clear($key);
+        RateLimiter::increment($key, decaySeconds: 300, amount: 5);
+
+        throw ValidationException::withMessages([
+            'email' =&gt; 'Too many attempts. Try again in 5 minutes.',
+        ]);
+    }
+
+    if (! Auth::attempt($request-&gt;only('email', 'password'))) {
+        RateLimiter::increment($key, decaySeconds: 300);
+
+        throw ValidationException::withMessages(['email' =&gt; __('auth.failed')]);
+    }
+
+    RateLimiter::clear($key);
+    $request-&gt;session()-&gt;regenerate();
+
+    return redirect()-&gt;intended('/dashboard');
+}</code></pre>
+
+<p>Keying on both the email and the IP keeps one attacker from locking every vendor out of their own account, while still stopping a single source from guessing a single password.</p>
+
+<h2>The edge cases that actually got exploited</h2>
+
+<p>The lockout was the headline. The fixes around it were just as important:</p>
+
+<ul>
+<li><strong>Stale cookies.</strong> A session cookie from before a password change or account removal could still get through part of the flow. We now block sign-in with a stale cookie, clear stale sessions, and refuse sign-in entirely for deleted users.</li>
+<li><strong>Role checks per route.</strong> Authentication tells you who someone is, not what they may do. Every console route checks the role it needs, instead of relying on "they're logged in".</li>
+<li><strong>A trail.</strong> Admins can see which devices a vendor signs in from, and an activity log records actions with the real client IP. Behind a load balancer, that means reading the forwarded header from a trusted proxy, not the proxy's own address.</li>
+<li><strong>Unused routes removed.</strong> The safest endpoint is the one that no longer exists.</li>
+</ul>
+
+<h2>Blocking abusive addresses on a public site</h2>
+
+<p>The travel retailer's problem was different: bots hitting both the login and the API. There we block the address itself. Three failed logins within five minutes adds the IP to a block list. Addresses that exceed the API rate limits go on the same list, with a counter. Blocked addresses get a clear "restricted" response instead of a timeout.</p>
+
+<p>Two exceptions keep this from hurting the business:</p>
+
+<ul>
+<li>A <strong>whitelist</strong> for known partners and the office.</li>
+<li><strong>Known search-engine crawlers stay allowed.</strong> Blocking them would quietly remove tour pages from search results, which costs far more than a few bot requests.</li>
+</ul>
+
+<p>A daily summary of blocked addresses goes to the team, so a sudden spike, or a partner accidentally blocked, is noticed within a day.</p>
+
+<h2>What I'd tell a team starting from scratch</h2>
+
+<p>Count failures, not requests. Make the lockout window slide. Key on the account and the address together. Then spend as much time on sessions, roles and logging as on the lockout itself, because that's where the quieter holes are.</p>
+
+<h2>How to check your own login</h2>
+
+<ul>
+<li>Try six wrong passwords in a row. Does the sixth attempt get a clear message, and does waiting actually let you back in?</li>
+<li>Keep retrying while locked. Does the lockout extend, or does a fixed window reset in your favour?</li>
+<li>Sign in, change the password in another browser, then use the old session. Is it still accepted?</li>
+<li>Delete a test user and try their credentials. Are they refused everywhere, including API routes?</li>
+<li>Check what IP your logs record behind the load balancer. Is it the visitor's, or the proxy's?</li>
+</ul>
+
+<p>Each of these takes minutes to try, and together they cover the gaps that a lockout alone leaves open.</p>

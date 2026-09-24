@@ -1,13 +1,15 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm } from '@inertiajs/react';
+import AuthField from '@/Components/AuthField';
+import { Head, Link, useForm } from '@inertiajs/react';
 
-export default function Register() {
+export default function Register({ redirect }) {
     const { data, setData, post, processing, errors } = useForm({
         name: '',
         email: '',
         password: '',
         password_confirmation: '',
     });
+    const query = redirect ? `?redirect=${encodeURIComponent(redirect)}` : '';
 
     const submit = (e) => {
         e.preventDefault();
@@ -15,73 +17,72 @@ export default function Register() {
     };
 
     return (
-        <AppLayout title="Register">
-            <Head title="Register" />
-            <div className="max-w-md mx-auto">
-                <form onSubmit={submit} className="space-y-6 bg-card-bg p-8 rounded-2xl border border-border">
-                    <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-foreground">
-                            Name
-                        </label>
-                        <input
-                            id="name"
-                            type="text"
-                            value={data.name}
-                            onChange={(e) => setData('name', e.target.value)}
-                            className="mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors"
-                        />
-                        {errors.name && <p className="mt-1 text-sm text-red-500">{errors.name}</p>}
-                    </div>
+        <AppLayout>
+            <Head title="Create an account" />
+            <div className="max-w-md mx-auto py-10 sm:py-16">
+                <Link
+                    href={redirect ? `${redirect}#comments` : '/'}
+                    className="inline-block mb-7 font-mono text-xs uppercase tracking-wider text-muted hover:text-foreground"
+                >
+                    ← {redirect ? 'Back to the post' : 'Back to writing'}
+                </Link>
+                <h1 className="font-display font-medium text-foreground text-[2.5rem] leading-tight">Create an account</h1>
+                <p className="mt-2 mb-8 text-muted">
+                    Accounts are only used for commenting. Your name is shown next to your comments; your email is not.
+                </p>
 
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-foreground">
-                            Email
-                        </label>
-                        <input
-                            id="email"
-                            type="email"
-                            value={data.email}
-                            onChange={(e) => setData('email', e.target.value)}
-                            className="mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors"
-                        />
-                        {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email}</p>}
-                    </div>
-
-                    <div>
-                        <label htmlFor="password" className="block text-sm font-medium text-foreground">
-                            Password
-                        </label>
-                        <input
-                            id="password"
-                            type="password"
-                            value={data.password}
-                            onChange={(e) => setData('password', e.target.value)}
-                            className="mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors"
-                        />
-                        {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-                    </div>
-
-                    <div>
-                        <label htmlFor="password_confirmation" className="block text-sm font-medium text-foreground">
-                            Confirm Password
-                        </label>
-                        <input
-                            id="password_confirmation"
-                            type="password"
-                            value={data.password_confirmation}
-                            onChange={(e) => setData('password_confirmation', e.target.value)}
-                            className="mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors"
-                        />
-                    </div>
+                <form onSubmit={submit} className="space-y-5">
+                    <AuthField
+                        id="name"
+                        label="Name"
+                        autoComplete="name"
+                        value={data.name}
+                        onChange={(v) => setData('name', v)}
+                        error={errors.name}
+                    />
+                    <AuthField
+                        id="email"
+                        label="Email"
+                        type="email"
+                        autoComplete="email"
+                        value={data.email}
+                        onChange={(v) => setData('email', v)}
+                        error={errors.email}
+                    />
+                    <AuthField
+                        id="password"
+                        label="Password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={data.password}
+                        onChange={(v) => setData('password', v)}
+                        error={errors.password}
+                    />
+                    <AuthField
+                        id="password_confirmation"
+                        label="Confirm password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={data.password_confirmation}
+                        onChange={(v) => setData('password_confirmation', v)}
+                        error={errors.password_confirmation}
+                    />
 
                     <button
                         type="submit"
                         disabled={processing}
-                        className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white btn-primary focus:outline-none disabled:opacity-50"
+                        className="btn-primary w-full py-2.5 rounded-md text-sm font-semibold disabled:opacity-50"
                     >
-                        Register
+                        Create account
                     </button>
                 </form>
+
+                <p className="mt-6 text-sm text-muted">
+                    Already have an account?{' '}
+                    <Link href={`/login${query}`} className="text-foreground underline underline-offset-4">
+                        Sign in
+                    </Link>
+                </p>
             </div>
         </AppLayout>
     );

@@ -1,19 +1,19 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 
 const ThemeContext = createContext({
-    theme: 'dark',
+    theme: 'light',
     setTheme: () => {},
 });
 
 const STORAGE_KEY = 'blog-theme';
 
 export function ThemeProvider({ children }) {
-    const [theme, setThemeState] = useState('dark');
+    const [theme, setThemeState] = useState('light');
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
         const stored = localStorage.getItem(STORAGE_KEY);
-        const initial = stored || 'dark';
+        const initial = stored === 'dark' ? 'dark' : 'light';
         setThemeState(initial);
         applyTheme(initial);
         setMounted(true);

@@ -1,0 +1,76 @@
+<p>For five years I worked on a car-rental comparison and booking platform in Australia. Travellers compared and booked cars from more than ten rental companies. Airline and airport partners ran their own branded sites on the same engine, and customer service managed every booking from one back office. The platform handled over four million rentals across five countries.</p>
+
+<p>From the outside it looked like one product. Underneath, every rental company had its own API, and no two of them agreed on anything.</p>
+
+<h2>Ten suppliers, ten sets of rules</h2>
+
+<p>Each supplier exposed its own XML or SOAP interface, with its own rules for:</p>
+
+<ul>
+<li><strong>Extras</strong>: child seats, GPS, additional drivers, each priced and named differently.</li>
+<li><strong>Mileage</strong>: unlimited, capped per day, or charged per kilometre.</li>
+<li><strong>Driver age</strong>: different surcharges and limits per supplier and country.</li>
+<li><strong>Flight numbers</strong> and loyalty programs: required by some, rejected by others.</li>
+<li><strong>Errors</strong>: every supplier had its own codes for "sold out", "invalid location" and "try again".</li>
+</ul>
+
+<p>If the website, the partner sites and the back office each dealt with those differences, every new supplier would mean changes in four places.</p>
+
+<h2>One interface, one car shape</h2>
+
+<p>The answer was one booking API with the same operations for every supplier: search many vehicles or one, book, modify, cancel, fetch the terms and conditions, fetch the available extras. Behind it, each supplier gets an adapter that turns its data into one car-details shape.</p>
+
+<pre><code>interface SupplierAdapter
+{
+    public function search(SearchRequest $request): VehicleCollection;
+
+    public function book(BookingRequest $request): SupplierBooking;
+
+    public function modify(Booking $booking, Changes $changes): SupplierBooking;
+
+    public function cancel(Booking $booking): Cancellation;
+
+    public function extras(Vehicle $vehicle): ExtraCollection;
+}</code></pre>
+
+<p>Normalizing the vehicle data (transmission, luggage, mileage, fees and images) meant the front ends never branched on which supplier a car came from. Adding a supplier meant writing an adapter and its tests, and nothing else changed.</p>
+
+<h2>Errors are part of the contract</h2>
+
+<p>The most useful part of each adapter turned out to be its error mapping. Every supplier error code maps to a small set of clear outcomes the rest of the system understands, and some of them trigger a retry or a re-rate automatically.</p>
+
+<pre><code>return match ($code) {
+    'VEH_NOT_AVAIL', 'SOLD_OUT' =&gt; SupplierError::soldOut(),
+    'RATE_CHANGED'              =&gt; SupplierError::reRate(),      // fetch a fresh price
+    'TIMEOUT', 'BUSY'           =&gt; SupplierError::retryable(),
+    default                     =&gt; SupplierError::unknown($code),
+};</code></pre>
+
+<p>That turned "the booking failed" into specific messages a customer, or a customer-service agent, could act on.</p>
+
+<h2>Keep clients stable while the engine changes</h2>
+
+<p>Several clients depended on this API: the consumer site, the white-label partner sites and the apps. They didn't all upgrade at the same time, so requests and responses were versioned, validated with the same custom rules for names, phone numbers, emails, flight numbers and dates, and documented in an OpenAPI specification. Each supplier had its own feature tests for search, book and cancel.</p>
+
+<h2>Finding the nearest depot</h2>
+
+<p>Customers search by place, not by a supplier's depot code, and suppliers keep changing their depots. So depots became data the business manages. Admins upload a supplier's depot list, review new, changed and closed depots, and commit the change. Search finds the nearest pickup and return pairs by type: airport, train station, ferry terminal or off-airport. Each depot's timezone is detected automatically, with an alert when it can't be, because a pickup time in the wrong timezone is a missed rental.</p>
+
+<h2>Where the business rules live</h2>
+
+<p>Commission, payment method and extras pricing varied by supplier, country and site, so they live in an admin "matrix" with change logs rather than in code. Vehicle codes are mapped per supplier and country. Marketing runs banners, badges and promotions, including vehicle discounts and upgrades, without a deploy.</p>
+
+<h2>Takeaway</h2>
+
+<p>When you integrate many external systems, the valuable work isn't the HTTP calls. It's deciding the one shape your own system speaks, and making every difference (data, errors, rules) stop at the adapter. Everything behind that line gets simpler with each supplier you add, not harder.</p>
+
+<h2>Signals that you need an adapter layer</h2>
+
+<ul>
+<li>Your front end has <code>if ($supplier === ...)</code> branches.</li>
+<li>A supplier's error code appears anywhere outside its integration.</li>
+<li>Adding a supplier requires changes in more than one application.</li>
+<li>Customer service can't tell whether a failed booking was a sold-out car, a bad input or a supplier outage.</li>
+</ul>
+
+<p>Any one of these is a sign the differences between suppliers are leaking into the rest of the system. The fix is almost always the same: a shared interface, one normalized data shape, and error mapping that stops at the adapter.</p>

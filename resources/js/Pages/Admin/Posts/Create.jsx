@@ -41,7 +41,7 @@ export default function PostCreate({ categories }) {
 
     const inputClass = "mt-1 block w-full rounded-lg border-border shadow-sm focus:border-accent focus:ring-accent/20 sm:text-sm px-4 py-2.5 bg-background text-foreground border transition-colors";
     const labelClass = "block text-sm font-medium text-foreground";
-    const errorClass = "mt-1 text-sm text-red-500";
+    const errorClass = "mt-1 text-sm text-foreground font-medium";
     const sectionTitle = "text-lg font-semibold text-foreground mb-4";
 
     return (
@@ -115,7 +115,7 @@ export default function PostCreate({ categories }) {
                         {data.tags.map((tag) => (
                             <span key={tag} className="inline-flex items-center bg-background text-muted px-3 py-1 rounded-lg text-sm border border-border">
                                 {tag}
-                                <button type="button" onClick={() => removeTag(tag)} className="ml-1.5 text-muted hover:text-red-500 transition-colors">&times;</button>
+                                <button type="button" onClick={() => removeTag(tag)} className="ml-1.5 text-muted hover:text-foreground transition-colors">&times;</button>
                             </span>
                         ))}
                     </div>
@@ -155,7 +155,7 @@ export default function PostCreate({ categories }) {
                 </div>
 
                 <div className="flex justify-end">
-                    <button type="submit" disabled={processing} className="btn-primary text-white px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">
+                    <button type="submit" disabled={processing} className="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">
                         Create Post
                     </button>
                 </div>
